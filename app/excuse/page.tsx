@@ -1,15 +1,35 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAppStore } from '@/lib/store'
 import { primeAudio } from '@/lib/audio'
 import { FAKE_VITALS, getFallbackRoast } from '@/constants'
 import WebcamRecorder from '@/components/WebcamRecorder'
 
+// Jitter a value by ±range, keeping one decimal place
+function jitter(base: number, range: number, decimals = 0): string {
+  const val = base + (Math.random() * 2 - 1) * range
+  return val.toFixed(decimals)
+}
+
 export default function ExcusePage() {
   const router = useRouter()
   const store = useAppStore()
+
+  const [hr, setHr] = useState(FAKE_VITALS.heartRate)
+  const [rr, setRr] = useState(FAKE_VITALS.respiratoryRate)
+  const [stress, setStress] = useState(FAKE_VITALS.stressScore)
+
+  // Animate the vitals to look like a live feed
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setHr(Number(jitter(FAKE_VITALS.heartRate, 3)))
+      setRr(Number(jitter(FAKE_VITALS.respiratoryRate, 1)))
+      setStress(Number(jitter(FAKE_VITALS.stressScore, 0.3, 1)))
+    }, 900)
+    return () => clearInterval(interval)
+  }, [])
 
   useEffect(() => {
     if (!store.walletAddress) router.replace('/')
@@ -73,20 +93,20 @@ export default function ExcusePage() {
         </div>
         <div className="flex justify-between text-sm font-mono">
           <div className="flex flex-col items-center gap-0.5">
-            <span className="text-red-400 font-bold animate-pulse">
-              {FAKE_VITALS.heartRate} BPM
+            <span className="text-red-400 font-bold tabular-nums">
+              {hr} BPM
             </span>
             <span className="text-zinc-600 text-xs">Heart Rate</span>
           </div>
           <div className="flex flex-col items-center gap-0.5">
-            <span className="text-blue-400 font-bold">
-              {FAKE_VITALS.respiratoryRate}/min
+            <span className="text-blue-400 font-bold tabular-nums">
+              {rr}/min
             </span>
             <span className="text-zinc-600 text-xs">Breathing</span>
           </div>
           <div className="flex flex-col items-center gap-0.5">
-            <span className="text-green-400 font-bold">
-              {FAKE_VITALS.stressScore}/10
+            <span className="text-green-400 font-bold tabular-nums">
+              {stress}/10
             </span>
             <span className="text-zinc-600 text-xs">Stress</span>
           </div>
