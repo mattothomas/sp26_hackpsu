@@ -69,9 +69,18 @@ export default function LandingPage() {
         </div>
       </div>
 
-      <div className="flex flex-col items-center gap-2">
+      <div className="flex flex-col items-center gap-3">
         <WalletMultiButton />
         <p className="text-zinc-600 text-xs">Solana devnet — no real money</p>
+        <button
+          onClick={() => {
+            setWalletAddress('TEST_MODE_NO_WALLET')
+            router.push('/committed')
+          }}
+          className="text-zinc-600 text-xs underline hover:text-zinc-400 transition-colors"
+        >
+          Skip wallet (test mode)
+        </button>
       </div>
     </main>
   )
