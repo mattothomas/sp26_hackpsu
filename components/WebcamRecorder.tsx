@@ -6,62 +6,88 @@ interface Props {
   onSubmit: (transcript: string) => void
 }
 
-/**
- * Shows live webcam feed (video only — no audio track, avoids mic permission noise).
- * Uses Web Speech API for live transcript. Falls back to a textarea if unsupported.
- * onSubmit fires with the final transcript when user clicks "THAT'S MY EXCUSE".
- */
 export default function WebcamRecorder({ onSubmit }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const recognitionRef = useRef<SpeechRecognition | null>(null)
+  const transcriptRef = useRef('')
+
   const [transcript, setTranscript] = useState('')
   const [isRecording, setIsRecording] = useState(false)
-  const [speechSupported, setSpeechSupported] = useState(true)
+  const [speechSupported, setSpeechSupported] = useState<boolean | null>(null) // null = unknown yet
+  const [micError, setMicError] = useState<string | null>(null)
   const [camError, setCamError] = useState(false)
 
   useEffect(() => {
-    // Start webcam
+    // Start webcam (video only)
     navigator.mediaDevices
       .getUserMedia({ video: true, audio: false })
       .then((stream) => {
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream
-        }
+        if (videoRef.current) videoRef.current.srcObject = stream
       })
       .catch(() => setCamError(true))
 
-    // Start speech recognition
+    // Check for Web Speech API
     const SpeechRecognitionAPI =
-      (window as typeof window & { SpeechRecognition?: typeof SpeechRecognition; webkitSpeechRecognition?: typeof SpeechRecognition }).SpeechRecognition ||
-      (window as typeof window & { webkitSpeechRecognition?: typeof SpeechRecognition }).webkitSpeechRecognition
+      (window as unknown as { SpeechRecognition?: typeof SpeechRecognition }).SpeechRecognition ||
+      (window as unknown as { webkitSpeechRecognition?: typeof SpeechRecognition }).webkitSpeechRecognition
 
     if (!SpeechRecognitionAPI) {
       setSpeechSupported(false)
       return
     }
 
-    const recognition = new SpeechRecognitionAPI()
-    recognition.continuous = true
-    recognition.interimResults = true
-    recognition.lang = 'en-US'
+    setSpeechSupported(true)
 
-    recognition.onresult = (event: SpeechRecognitionEvent) => {
-      let full = ''
-      for (let i = 0; i < event.results.length; i++) {
-        full += event.results[i][0].transcript
+    function startRecognition() {
+      const recognition = new SpeechRecognitionAPI!()
+      recognition.continuous = true
+      recognition.interimResults = true
+      recognition.lang = 'en-US'
+
+      recognition.onstart = () => {
+        setIsRecording(true)
+        setMicError(null)
       }
-      setTranscript(full)
+
+      recognition.onresult = (event: SpeechRecognitionEvent) => {
+        let full = ''
+        for (let i = 0; i < event.results.length; i++) {
+          full += event.results[i][0].transcript
+        }
+        transcriptRef.current = full
+        setTranscript(full)
+      }
+
+      recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
+        if (event.error === 'not-allowed') {
+          setMicError('Microphone permission denied. Allow mic access in your browser and refresh.')
+          setSpeechSupported(false)
+        } else if (event.error === 'no-speech') {
+          // Normal — just no speech detected, will restart via onend
+        } else {
+          setMicError(`Speech error: ${event.error}`)
+        }
+        setIsRecording(false)
+      }
+
+      recognition.onend = () => {
+        setIsRecording(false)
+        // Auto-restart so it doesn't stop after a pause
+        if (recognitionRef.current === recognition) {
+          try { recognition.start() } catch { /* already started */ }
+        }
+      }
+
+      recognition.start()
+      recognitionRef.current = recognition
     }
 
-    recognition.onstart = () => setIsRecording(true)
-    recognition.onend = () => setIsRecording(false)
-
-    recognition.start()
-    recognitionRef.current = recognition
+    startRecognition()
 
     return () => {
-      recognition.stop()
-      // Stop webcam tracks on unmount
+      const r = recognitionRef.current
+      recognitionRef.current = null // prevents onend restart
+      r?.stop()
       if (videoRef.current?.srcObject) {
         const stream = videoRef.current.srcObject as MediaStream
         stream.getTracks().forEach((t) => t.stop())
@@ -70,9 +96,10 @@ export default function WebcamRecorder({ onSubmit }: Props) {
   }, [])
 
   function handleSubmit() {
-    recognitionRef.current?.stop()
-    const finalText = transcript.trim() || 'I have no excuse'
-    onSubmit(finalText)
+    const r = recognitionRef.current
+    recognitionRef.current = null // prevents onend from restarting
+    r?.stop()
+    onSubmit(transcriptRef.current.trim() || 'I have no excuse')
   }
 
   return (
@@ -92,34 +119,44 @@ export default function WebcamRecorder({ onSubmit }: Props) {
             className="w-full h-full object-cover scale-x-[-1]"
           />
         )}
-        {isRecording && (
-          <div className="absolute top-2 left-2 flex items-center gap-1.5 bg-black/70 rounded-full px-2 py-1">
-            <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse-fast" />
-            <span className="text-xs text-white font-mono">REC</span>
-          </div>
-        )}
+
+        {/* Recording indicator */}
+        <div className="absolute top-2 left-2 flex items-center gap-1.5 bg-black/70 rounded-full px-2 py-1">
+          <span className={`w-2 h-2 rounded-full ${isRecording ? 'bg-red-500 animate-pulse-fast' : 'bg-zinc-600'}`} />
+          <span className="text-xs text-white font-mono">
+            {isRecording ? 'REC' : speechSupported === null ? '...' : 'PAUSED'}
+          </span>
+        </div>
       </div>
 
-      {/* Transcript */}
-      {speechSupported ? (
-        <div className="w-full max-w-md min-h-[80px] bg-zinc-900 border border-zinc-700 rounded-lg p-3 text-white text-sm font-mono leading-relaxed">
-          {transcript || (
-            <span className="text-zinc-500">Start talking — your excuse will appear here...</span>
-          )}
+      {/* Speech transcript or fallback */}
+      {micError ? (
+        <div className="w-full max-w-md bg-red-950 border border-red-700 rounded-lg p-3 text-red-300 text-sm font-mono">
+          {micError}
         </div>
-      ) : (
+      ) : speechSupported === false ? (
         <textarea
           className="w-full max-w-md h-24 bg-zinc-900 border border-zinc-700 rounded-lg p-3 text-white text-sm font-mono resize-none focus:outline-none focus:border-red-500"
-          placeholder="Speech recognition not available. Type your excuse..."
+          placeholder="Speech recognition unavailable (use Chrome). Type your excuse..."
           value={transcript}
-          onChange={(e) => setTranscript(e.target.value)}
+          onChange={(e) => {
+            transcriptRef.current = e.target.value
+            setTranscript(e.target.value)
+          }}
         />
+      ) : (
+        <div className="w-full max-w-md min-h-[80px] bg-zinc-900 border border-zinc-700 rounded-lg p-3 text-white text-sm font-mono leading-relaxed">
+          {transcript || (
+            <span className="text-zinc-500">
+              {speechSupported === null
+                ? 'Requesting microphone access...'
+                : 'Start talking — your excuse will appear here...'}
+            </span>
+          )}
+        </div>
       )}
 
-      <button
-        onClick={handleSubmit}
-        className="btn-danger w-full max-w-md"
-      >
+      <button onClick={handleSubmit} className="btn-danger w-full max-w-md">
         THAT&apos;S MY EXCUSE — ANALYZE ME
       </button>
     </div>
