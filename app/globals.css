@@ -1,0 +1,33 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer components {
+  .btn-primary {
+    @apply bg-white text-black font-bold py-3 px-6 rounded-lg text-base uppercase tracking-wide hover:bg-zinc-200 active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed;
+  }
+
+  .btn-danger {
+    @apply bg-red-600 text-white font-bold py-3 px-6 rounded-lg text-base uppercase tracking-wide hover:bg-red-500 active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed;
+  }
+
+  .btn-ghost {
+    @apply border border-zinc-600 text-zinc-300 font-bold py-3 px-6 rounded-lg text-base uppercase tracking-wide hover:border-zinc-400 hover:text-white active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed;
+  }
+}
+
+/* Override wallet adapter modal to match dark theme */
+.wallet-adapter-modal-wrapper {
+  background: #18181b !important;
+}
+
+.wallet-adapter-button {
+  background: #dc2626 !important;
+  font-weight: 700 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.05em !important;
+}
+
+.wallet-adapter-button:hover {
+  background: #ef4444 !important;
+}
